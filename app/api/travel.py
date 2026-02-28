@@ -6,14 +6,34 @@ from app.tools.hotels import search_hotels
 
 router = APIRouter()
 
+SYSTEM_PROMPT = """
+You are a travel planning agent.
+
+You will ALWAYS receive:
+- origin city
+- destination city
+- start date
+- end date
+- total budget
+
+Rules:
+1. DO NOT ask follow-up questions.
+2. DO NOT ask for clarification.
+3. Assume the budget covers flights + hotels.
+4. Always:
+   - Check weather
+   - Search flights
+   - Search hotels
+5. If data is missing or a tool fails:
+   - Make a reasonable assumption
+   - Clearly state the assumption in the response
+
+Produce a final travel plan.
+"""
 @router.get("/llm-test")
 def llm_test():
     response = llm.invoke("Suggest a budget-friendly travel destination in December.")
     return {"response": response.content}
-
-@router.post("/plan")
-def plan_trip(request: TravelRequest):
-    return {"message": "Input received", "data": request}
 
 @router.get("/test/flights")
 def test_flights():
@@ -44,20 +64,30 @@ def hotel_search(
     })
 
     return {"results": result}
+def normalize_city(city: str) -> str:
+    return city.strip().upper()
 
 @router.post("/plan")
-def plan_trip(request: TravelRequest):
-    user_input = (
-        f"Plan a trip from {request.origin_city} "
-        f"with total budget {request.budget} "
-        f"from {request.start_date} to {request.end_date}. "
-        f"Preferences: {request.preferences}"
-    )
+def plan_trip(req: TravelRequest):
+    origin = normalize_city(req.origin_city)
+    destination = normalize_city(req.destination_city)
+    agent_input = f"""
+    Plan a trip with the following details:
 
+    Origin: {origin}
+    Destination: {destination}
+    Dates: {req.start_date} to {req.end_date}
+    Budget: ${req.budget}
+    Preferences: {req.preferences or "none"}
+
+    Proceed with planning.
+    """
     result = agent_executor.invoke({
-        "messages": [("human", user_input)]
+        "messages": [
+            ("system", SYSTEM_PROMPT),
+            ("human", agent_input)
+        ]
     })
+    print(result["messages"][-1].content)
+    return result["messages"][-1].content
 
-    return {
-        "plan": result["messages"][-1].content
-    }

@@ -1,12 +1,23 @@
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
 
 embedding = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-vectorstore = Chroma(
-    collection_name="travel_searches",
-    embedding_function=embedding,
-    persist_directory="./chroma_db"
-)
+# ✅ Start with NO vectorstore
+vector_store: FAISS | None = None
+
+
+def get_vector_store() -> FAISS:
+    global vector_store
+
+    if vector_store is None:
+        # Create a dummy first index
+        vector_store = FAISS.from_texts(
+            texts=["initial memory bootstrap"],
+            embedding=embedding,
+            metadatas=[{"bootstrap": True}]
+        )
+
+    return vector_store

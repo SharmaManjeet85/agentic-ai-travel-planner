@@ -1,10 +1,11 @@
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_agent
-
 from app.tools.weather import get_weather
 from app.tools.flights import search_flights
 from app.tools.hotels import search_hotels
+from app.tools.budget_mcp import budget_mcp
+from langgraph.checkpoint.memory import InMemorySaver
 
 # Claude model (tool calling is native)
 llm = ChatAnthropic(
@@ -15,7 +16,8 @@ llm = ChatAnthropic(
 tools = [
     get_weather,
     search_flights,
-    search_hotels
+    search_hotels,
+    budget_mcp,
 ]
 
 # Claude understands tool calls without ReAct helpers
@@ -30,4 +32,5 @@ agent = prompt | llm.bind_tools(tools)
 agent_executor = create_agent(
     model=llm,
     tools=tools,
+    checkpointer=InMemorySaver()
 )

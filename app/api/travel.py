@@ -3,7 +3,10 @@ from app.Schemas.travel import TravelRequest
 from app.agents.travel_agent import llm,agent_executor
 from app.tools.flights import search_flights
 from app.tools.hotels import search_hotels
-
+from app.rag.memory import save_memory
+from app.rag.schemas import MemoryRecord
+from app.rag.vectorstore import get_vector_store
+from app.rag.retriever import retrieve_memories
 router = APIRouter()
 
 SYSTEM_PROMPT = """
@@ -67,13 +70,15 @@ def hotel_search(
 def normalize_city(city: str) -> str:
     return city.strip().upper()
 
+
+
 @router.post("/plan")
 def plan_trip(req: TravelRequest):
     origin = normalize_city(req.origin_city)
     destination = normalize_city(req.destination_city)
+
     agent_input = f"""
     Plan a trip with the following details:
-
     Origin: {origin}
     Destination: {destination}
     Dates: {req.start_date} to {req.end_date}
@@ -82,12 +87,55 @@ def plan_trip(req: TravelRequest):
 
     Proceed with planning.
     """
-    result = agent_executor.invoke({
-        "messages": [
-            ("system", SYSTEM_PROMPT),
-            ("human", agent_input)
-        ]
-    })
-    print(result["messages"][-1].content)
-    return result["messages"][-1].content
+    user_memory = retrieve_memories(
+    req.user_id,
+    f"{req.origin_city} {req.destination_city} budget travel"
+    )
+    system_prompt = f"""
+    {SYSTEM_PROMPT}
 
+    User travel history and preferences:
+    {user_memory}
+
+    Use this information while planning.
+    """
+
+    result = agent_executor.invoke(
+        {
+            "messages": [
+                ("system", SYSTEM_PROMPT),
+                ("human", agent_input)
+            ]
+        },
+        config={
+            "configurable": {
+                "thread_id": req.user_id
+            }
+        }
+    )
+
+    final_answer = result["messages"][-1].content
+
+    # ✅ Save to RAG memory
+    save_memory(
+        MemoryRecord(
+            type="past_trip",
+            content=f"Planned trip: {final_answer}",
+            metadata={
+                "user_id": req.user_id,
+                "origin": req.origin_city,
+                "destination": req.destination_city,
+                "budget": req.budget
+            }
+        )
+    )
+    # docs = get_vector_store.similarity_search(
+    #     req.origin_city,
+    #     k=5
+    # )
+    # print("🔍 Retrieved inside request:", len(docs))
+
+    return {
+        "status": "success",
+        "plan": final_answer
+    }

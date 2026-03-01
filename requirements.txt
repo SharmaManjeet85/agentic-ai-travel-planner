@@ -10,3 +10,4 @@ langchain-anthropic
 chromadb
 
 httpx
+sentence-transformers
